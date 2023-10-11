@@ -1,44 +1,32 @@
 node {
-   def mvnHome = tool 'M3'
+    def GIT_URL = 'https://github.com/shashikanthmartha/java-maven-calculator-web-app.git'
+    def SONARQUBE_SERVER = 'http://localhost:9000'
 
-   stage('Checkout Code') { 
-      git 'https://github.com/maping/java-maven-calculator-web-app.git'
-   }
-   stage('JUnit Test') {
-      if (isUnix()) {
-         sh "'${mvnHome}/bin/mvn' clean test"
-      } else {
-         bat(/"${mvnHome}\bin\mvn" clean test/)
-      }
-   }
-   stage('Integration Test') {
-      if (isUnix()) {
-         sh "'${mvnHome}/bin/mvn' integration-test"
-      } else {
-         bat(/"${mvnHome}\bin\mvn" integration-test/)
-      }
-   }
- /*
-   stage('Performance Test') {
-      if (isUnix()) {
-         sh "'${mvnHome}/bin/mvn' cargo:start verify cargo:stop"
-      } else {
-         bat(/"${mvnHome}\bin\mvn" cargo:start verify cargo:stop/)
-      }
-   }
-  */
-  stage('Performance Test') {
-      if (isUnix()) {
-         sh "'${mvnHome}/bin/mvn' verify"
-      } else {
-         bat(/"${mvnHome}\bin\mvn" verify/)
-      }
-   }
-   stage('Deploy') {
-      timeout(time: 10, unit: 'MINUTES') {
-           input message: 'Deploy this web app to production ?'
-      }
-      echo 'Deploy...'
-   }
+    try {
+        stage('Checkout') {
+            checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: GIT_URL]]])
+        }
+
+        stage('Build') {
+            sh 'mvn clean install'
+        }
+
+        stage('Static Code Analysis') {
+            withSonarQubeEnv('SonarQube') {
+                sh 'mvn sonar:sonar'
+            }
+        }
+
+        stage('Deploy to Tomcat') {
+            sh 'cp target/your-web-app.war $CATALINA_HOME/webapps/'
+        }
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        throw e
+    } finally {
+        stage('Post-build') {
+            step([$class: 'JUnitResultArchiver', testResults: 'target/test-reports/**/*.xml'])
+            step([$class: 'Mailer', recipients: 'shashikanthmartha@gmail.com', subject: "Build ${currentBuild.result}: Job '${env.JOB_NAME}'"])
+        }
+    }
 }
-   
